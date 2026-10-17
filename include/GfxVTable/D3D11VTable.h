@@ -33,20 +33,29 @@ namespace GfxVTable {
         Vulkan2
     };
 
-    template <typename F>
-        requires std::invocable<F, void **, void **, void **>
-    inline auto VTableForD3D11(F &&fn) -> D3D11ErrorCode {
-        auto dxgi_dll = GetModuleHandleA("dxgi.dll");
-        if (!dxgi_dll) {
-            return ModuleNotFound;
+    inline auto VTableForD3D11(auto &&fn, bool isDelay = false) -> D3D11ErrorCode
+        requires std::invocable<decltype(fn), void **, void **, void **>
+    {
+        HMODULE dxgiHandle = nullptr;
+        HMODULE d3d11Handle = nullptr;
+        for (size_t i = 0; i < 3; i += 1) {
+            dxgiHandle = ::GetModuleHandleA("dxgi.dll");
+            d3d11Handle = ::GetModuleHandleA("d3d11.dll");
+
+            if (dxgiHandle && d3d11Handle) {
+                break;
+            }
+
+            if (isDelay && i < 2) {
+                ::Sleep(1000);
+            }
         }
 
-        auto d3d11_dll = GetModuleHandleA("d3d11.dll");
-        if (!d3d11_dll) {
-            return ModuleNotFound;
+        if (!dxgiHandle || !d3d11Handle) {
+            return D3D11ErrorCode::ModuleNotFound;
         }
 
-        auto CreateDXGIFactory = ((CreateDXGIFactoryType)GetProcAddress(dxgi_dll, "CreateDXGIFactory"));
+        auto CreateDXGIFactory = ((CreateDXGIFactoryType)GetProcAddress(dxgiHandle, "CreateDXGIFactory"));
         if (!CreateDXGIFactory) {
             return MethodNotFound;
         }
@@ -66,7 +75,7 @@ namespace GfxVTable {
         ScopeGuard adapterGuard([&]() { adapter->Release(); });
 
         auto D3D11CreateDeviceAndSwapChain =
-            ((D3D11CreateDeviceAndSwapChainType)GetProcAddress(d3d11_dll, "D3D11CreateDeviceAndSwapChain"));
+            ((D3D11CreateDeviceAndSwapChainType)GetProcAddress(d3d11Handle, "D3D11CreateDeviceAndSwapChain"));
         if (!D3D11CreateDeviceAndSwapChain) {
             return MethodNotFound;
         }
